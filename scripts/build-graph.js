@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const TARGET = 'POOL';
-const START = 'CODE';
+const START = 'BYTE';
 
 const words = fs
   .readFileSync(path.join(__dirname, 'words.txt'), 'utf8')

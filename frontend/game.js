@@ -1,11 +1,11 @@
-let graph = null;
-let wordSet = null;
 let chain = [];
+let currentWord = null;
 let startTime = null;
 let timerInterval = null;
 let finished = false;
 let socket = null;
 let lastLeaderboard = [];
+let awaitingGuess = false;
 
 const nicknameScreen = document.getElementById('nickname-screen');
 const gameScreen = document.getElementById('game-screen');
@@ -25,26 +25,15 @@ const leaderboardEmpty = document.getElementById('leaderboard-empty');
 const leaderboardCount = document.getElementById('leaderboard-count');
 let pendingFinish = null;
 
-function isOneLetterApart(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) diff++;
-  }
-  return diff === 1;
-}
-
 function renderChain() {
   chainEl.innerHTML = '';
-  const target = graph.target;
-  chain.forEach((word) => {
+  chain.forEach(({ word, matches, isWin }) => {
     const row = document.createElement('div');
     row.className = 'chain-row';
-    const isWin = word === target;
     for (let i = 0; i < word.length; i++) {
       const tile = document.createElement('div');
-      const matches = word[i] === target[i];
-      tile.className = 'tile' + (isWin ? ' win' : matches ? ' match' : '');
+      const isMatch = matches ? matches[i] : false;
+      tile.className = 'tile' + (isWin ? ' win' : isMatch ? ' match' : '');
       tile.textContent = word[i];
       row.appendChild(tile);
     }
@@ -99,14 +88,6 @@ function stopTimer() {
   return timeMs;
 }
 
-async function init() {
-  const res = await fetch('/data/graph.json');
-  graph = await res.json();
-  wordSet = new Set(graph.words);
-  chain = [graph.start];
-  renderChain();
-}
-
 function showScreen(screen) {
   nicknameScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
@@ -114,47 +95,52 @@ function showScreen(screen) {
   screen.classList.remove('hidden');
 }
 
-guessForm.addEventListener('submit', (e) => {
-  e.preventDefault();
+function handleGuessResult(result) {
+  awaitingGuess = false;
   if (finished) return;
 
-  const guess = guessInput.value.trim().toUpperCase();
-  guessInput.value = '';
-  messageEl.textContent = '';
-
-  const current = chain[chain.length - 1];
-
-  if (guess.length !== 4) {
-    messageEl.textContent = 'Word must be 4 letters.';
-    return;
-  }
-  if (!wordSet.has(guess)) {
-    messageEl.textContent = `${guess} is not a real word.`;
-    return;
-  }
-  if (!isOneLetterApart(current, guess)) {
-    messageEl.textContent = `${guess} must differ from ${current} by exactly one letter.`;
-    return;
-  }
-  if (guess === current) {
-    messageEl.textContent = 'Already used that word.';
+  if (!result.ok) {
+    if (result.reason === 'length') {
+      messageEl.textContent = 'Word must be 4 letters.';
+    } else if (result.reason === 'not_a_word') {
+      messageEl.textContent = `${result.word} is not a real word.`;
+    } else if (result.reason === 'repeat') {
+      messageEl.textContent = 'Already used that word.';
+    } else if (result.reason === 'not_adjacent') {
+      messageEl.textContent = `${result.word} must differ from ${result.current} by exactly one letter.`;
+    }
     return;
   }
 
-  chain.push(guess);
+  currentWord = result.word;
+  chain.push({ word: result.word, matches: result.matches, isWin: result.won });
   renderChain();
 
-  if (guess === graph.target) {
+  if (result.won) {
     finished = true;
     const timeMs = stopTimer();
     const moves = chain.length - 1;
-    pendingFinish = { nickname: nicknameInput.value.trim(), timeMs };
+    pendingFinish = { nickname: nicknameInput.value.trim() };
 
     resultTextEl.textContent = `Solved in ${moves} moves, ${(timeMs / 1000).toFixed(1)}s`;
     guessForm.classList.add('hidden');
     hintText.classList.add('hidden');
     donePanel.classList.remove('hidden');
   }
+}
+
+guessForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (finished || awaitingGuess) return;
+
+  const guess = guessInput.value.trim().toUpperCase();
+  guessInput.value = '';
+  messageEl.textContent = '';
+
+  if (!guess) return;
+
+  awaitingGuess = true;
+  socket.emit('guess', guess);
 });
 
 document.getElementById('nickname-submit').addEventListener('click', async () => {
@@ -167,36 +153,43 @@ nicknameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('nickname-submit').click();
 });
 
+function ensureSocket() {
+  if (!socket) {
+    socket = io();
+    socket.on('leaderboard', renderLeaderboard);
+    socket.on('guessResult', handleGuessResult);
+  }
+}
+
 async function startGame(nickname) {
-  await init();
+  ensureSocket();
 
   playerNameLabel.textContent = nickname;
   messageEl.textContent = '';
   finished = false;
+  awaitingGuess = false;
   pendingFinish = null;
+  chain = [];
+  currentWord = null;
   guessForm.classList.remove('hidden');
   hintText.classList.remove('hidden');
   donePanel.classList.add('hidden');
 
-  showScreen(gameScreen);
-  guessInput.focus();
-
-  if (!socket) {
-    socket = io();
-    socket.on('leaderboard', renderLeaderboard);
-  }
-
-  startTimer();
+  socket.once('init', ({ start, current }) => {
+    currentWord = current;
+    chain = [{ word: start, matches: null, isWin: false }];
+    renderChain();
+    showScreen(gameScreen);
+    guessInput.focus();
+    startTimer();
+  });
+  socket.emit('startGame');
 }
 
 document.getElementById('nickname-view-leaderboard').addEventListener('click', (e) => {
   e.preventDefault();
-  if (!socket) {
-    socket = io();
-    socket.on('leaderboard', renderLeaderboard);
-  } else {
-    renderLeaderboard(lastLeaderboard);
-  }
+  ensureSocket();
+  renderLeaderboard(lastLeaderboard);
   showScreen(leaderboardScreen);
 });
 

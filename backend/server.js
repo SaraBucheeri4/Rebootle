@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
 const LEADERBOARD_FILE = path.join(__dirname, 'data', 'leaderboard.json');
+const GRAPH_FILE = path.join(__dirname, 'data', 'graph.json');
 
 function loadLeaderboard() {
   try {
@@ -19,6 +20,18 @@ function saveLeaderboard(board) {
   fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(board, null, 2));
 }
 
+const graph = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+const wordSet = new Set(graph.words);
+
+function isOneLetterApart(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) diff++;
+  }
+  return diff === 1;
+}
+
 // Map of nickname -> best (lowest) timeMs
 let leaderboard = loadLeaderboard();
 
@@ -30,18 +43,68 @@ function sortedEntries() {
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
-app.use('/data', express.static(path.join(__dirname, 'data')));
 
 const server = http.createServer(app);
 const io = new Server(server);
 
 io.on('connection', (socket) => {
+  let session = null;
+
+  function newSession() {
+    session = {
+      current: graph.start,
+      startTime: Date.now(),
+      finished: false,
+    };
+    socket.emit('init', { start: graph.start, current: session.current });
+  }
+
+  newSession();
   socket.emit('leaderboard', sortedEntries());
 
-  socket.on('finish', ({ nickname, timeMs }) => {
-    if (typeof nickname !== 'string' || !nickname.trim()) return;
-    if (typeof timeMs !== 'number' || !Number.isFinite(timeMs) || timeMs <= 0) return;
+  socket.on('startGame', () => {
+    newSession();
+  });
 
+  socket.on('guess', (word) => {
+    if (!session) return;
+    if (session.finished) return;
+    if (typeof word !== 'string') return;
+
+    const guess = word.trim().toUpperCase();
+
+    if (guess.length !== 4) {
+      socket.emit('guessResult', { ok: false, reason: 'length', word: guess });
+      return;
+    }
+    if (!wordSet.has(guess)) {
+      socket.emit('guessResult', { ok: false, reason: 'not_a_word', word: guess });
+      return;
+    }
+    if (guess === session.current) {
+      socket.emit('guessResult', { ok: false, reason: 'repeat', word: guess });
+      return;
+    }
+    if (!isOneLetterApart(session.current, guess)) {
+      socket.emit('guessResult', { ok: false, reason: 'not_adjacent', word: guess, current: session.current });
+      return;
+    }
+
+    session.current = guess;
+    const won = guess === graph.target;
+    if (won) session.finished = true;
+
+    const matches = [];
+    for (let i = 0; i < guess.length; i++) matches.push(guess[i] === graph.target[i]);
+
+    socket.emit('guessResult', { ok: true, word: guess, won, matches });
+  });
+
+  socket.on('finish', ({ nickname } = {}) => {
+    if (!session.finished) return;
+    if (typeof nickname !== 'string' || !nickname.trim()) return;
+
+    const timeMs = Date.now() - session.startTime;
     const clean = nickname.trim().slice(0, 24);
     const existing = leaderboard[clean];
     if (existing === undefined || timeMs < existing) {
