@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rebootle</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <div id="nickname-screen" class="screen">
+    <div class="col col-narrow">
+      <div class="wordmark">
+        <img src="logo.png" alt="Rebootle" id="logo">
+      </div>
+
+      <div class="title-block">
+        <div class="game-title">Rebootle</div>
+        <div class="game-subtitle">Enter your game name to start Game Day</div>
+      </div>
+
+      <div class="col" style="gap:16px;">
+        <input id="nickname-input" type="text" maxlength="16" placeholder="Your game name">
+        <button id="nickname-submit" class="btn-primary">Start Playing</button>
+        <a href="#" id="nickname-view-leaderboard" class="link">View Leaderboard</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-screen" class="screen hidden">
+    <div class="col col-wide">
+      <div class="row row-between">
+        <span class="player-name" id="player-name-label"></span>
+        <a href="#" id="game-view-leaderboard" class="link">Leaderboard</a>
+      </div>
+
+      <div class="title-block" style="margin-bottom:24px;">
+        <div class="game-title game-title-sm">Rebootle</div>
+        <div class="row" style="justify-content:center; gap:10px;">
+          <div class="day-label">CODE &rarr; POOL</div>
+          <div class="timer" id="timer">0.0s</div>
+        </div>
+      </div>
+
+      <div id="chain"></div>
+
+      <form id="guess-form" class="row" style="margin-bottom:8px;">
+        <input id="guess-input" type="text" maxlength="4" autocomplete="off" placeholder="Next word">
+        <button type="submit" class="btn-primary">Go</button>
+      </form>
+      <div id="message"></div>
+
+      <div class="hint" id="hint-text">Type your next word &middot; Enter to submit</div>
+
+      <div id="done-panel" class="col hidden" style="align-items:center; gap:16px; margin-top:8px;">
+        <div class="result-text" id="result-text"></div>
+        <button id="done-button" class="btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="leaderboard-screen" class="screen hidden">
+    <div class="col col-narrow">
+      <div class="row row-between" style="align-items:baseline; margin-bottom:8px;">
+        <div class="leaderboard-title">Leaderboard</div>
+        <a href="#" id="leaderboard-back" class="link">&larr; Back</a>
+      </div>
+      <div class="leaderboard-sub">
+        <span class="dot"></span>
+        <span id="leaderboard-count">0 runs</span> &middot; fastest time wins
+      </div>
+
+      <ol id="leaderboard-list"></ol>
+      <div id="leaderboard-empty" class="empty-state hidden">No scores yet — be the first to play!</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
