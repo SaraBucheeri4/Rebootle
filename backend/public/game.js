@@ -1,5 +1,6 @@
 let chain = [];
 let currentWord = null;
+let sessionId = null;
 let startTime = null;
 let timerInterval = null;
 let finished = false;
@@ -96,6 +97,7 @@ function showScreen(screen) {
 }
 
 function handleGuessResult(result) {
+  if (result.sessionId !== sessionId) return;
   awaitingGuess = false;
   if (finished) return;
 
@@ -120,7 +122,7 @@ function handleGuessResult(result) {
     finished = true;
     const timeMs = stopTimer();
     const moves = chain.length - 1;
-    pendingFinish = { nickname: nicknameInput.value.trim() };
+    pendingFinish = { sessionId, nickname: nicknameInput.value.trim() };
 
     resultTextEl.textContent = `Solved in ${moves} moves, ${(timeMs / 1000).toFixed(1)}s`;
     guessForm.classList.add('hidden');
@@ -140,7 +142,7 @@ guessForm.addEventListener('submit', (e) => {
   if (!guess) return;
 
   awaitingGuess = true;
-  socket.emit('guess', guess);
+  socket.emit('guess', { sessionId, word: guess });
 });
 
 document.getElementById('nickname-submit').addEventListener('click', async () => {
@@ -171,11 +173,13 @@ async function startGame(nickname) {
   pendingFinish = null;
   chain = [];
   currentWord = null;
+  sessionId = null;
   guessForm.classList.remove('hidden');
   hintText.classList.remove('hidden');
   donePanel.classList.add('hidden');
 
-  socket.once('init', ({ start, current }) => {
+  socket.once('init', ({ sessionId: newSessionId, start, current }) => {
+    sessionId = newSessionId;
     currentWord = current;
     chain = [{ word: start, matches: null, isWin: false }];
     renderChain();

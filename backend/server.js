@@ -47,16 +47,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server);
 
+let nextSessionId = 1;
+
 io.on('connection', (socket) => {
   let session = null;
 
   function newSession() {
     session = {
+      id: nextSessionId++,
       current: graph.start,
       startTime: Date.now(),
       finished: false,
     };
-    socket.emit('init', { start: graph.start, current: session.current });
+    socket.emit('init', { sessionId: session.id, start: graph.start, current: session.current });
   }
 
   newSession();
@@ -66,27 +69,28 @@ io.on('connection', (socket) => {
     newSession();
   });
 
-  socket.on('guess', (word) => {
+  socket.on('guess', ({ sessionId, word } = {}) => {
     if (!session) return;
+    if (sessionId !== session.id) return;
     if (session.finished) return;
     if (typeof word !== 'string') return;
 
     const guess = word.trim().toUpperCase();
 
     if (guess.length !== 4) {
-      socket.emit('guessResult', { ok: false, reason: 'length', word: guess });
+      socket.emit('guessResult', { sessionId: session.id, ok: false, reason: 'length', word: guess });
       return;
     }
     if (!wordSet.has(guess)) {
-      socket.emit('guessResult', { ok: false, reason: 'not_a_word', word: guess });
+      socket.emit('guessResult', { sessionId: session.id, ok: false, reason: 'not_a_word', word: guess });
       return;
     }
     if (guess === session.current) {
-      socket.emit('guessResult', { ok: false, reason: 'repeat', word: guess });
+      socket.emit('guessResult', { sessionId: session.id, ok: false, reason: 'repeat', word: guess });
       return;
     }
     if (!isOneLetterApart(session.current, guess)) {
-      socket.emit('guessResult', { ok: false, reason: 'not_adjacent', word: guess, current: session.current });
+      socket.emit('guessResult', { sessionId: session.id, ok: false, reason: 'not_adjacent', word: guess, current: session.current });
       return;
     }
 
@@ -97,10 +101,12 @@ io.on('connection', (socket) => {
     const matches = [];
     for (let i = 0; i < guess.length; i++) matches.push(guess[i] === graph.target[i]);
 
-    socket.emit('guessResult', { ok: true, word: guess, won, matches });
+    socket.emit('guessResult', { sessionId: session.id, ok: true, word: guess, won, matches });
   });
 
-  socket.on('finish', ({ nickname } = {}) => {
+  socket.on('finish', ({ sessionId, nickname } = {}) => {
+    if (!session) return;
+    if (sessionId !== session.id) return;
     if (!session.finished) return;
     if (typeof nickname !== 'string' || !nickname.trim()) return;
 
