@@ -97,8 +97,8 @@ function showScreen(screen) {
 }
 
 function handleGuessResult(result) {
-  if (result.sessionId !== sessionId) return;
   awaitingGuess = false;
+  if (result.sessionId !== sessionId) return;
   if (finished) return;
 
   if (!result.ok) {
