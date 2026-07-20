@@ -62,7 +62,6 @@ io.on('connection', (socket) => {
     socket.emit('init', { sessionId: session.id, start: graph.start, current: session.current });
   }
 
-  newSession();
   socket.emit('leaderboard', sortedEntries());
 
   socket.on('startGame', () => {
